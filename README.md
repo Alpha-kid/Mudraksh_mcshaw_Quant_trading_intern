@@ -1,0 +1,2 @@
+# Mudraksh_mcshaw_Quant_trading_intern
+Mudraksh and Mcshaw learning_phase
