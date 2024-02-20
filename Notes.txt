@@ -1,0 +1,22 @@
+Financial Markets
+Please go through the following before going ahead with the tutorial-
+
+1. What are cash and derivatives markets? 
+Cash market is used to buy the asset and hedging the underlying asset we use derivative market.
+2. What are indices? (Especially NIFTY 50 and NIFTY BANK)
+The Nifty 50 is a stock market index in India, 
+comprising 50 actively traded Indian companies from 
+various sectors listed on the National Stock Exchange (NSE). 
+3. Commonly used order types i.e. Market Order, SLM order, SLL order, Limit order.
+Market order are buying/selling at the market price.
+SLM Order-stoploss order triggered at market price.
+SLL Order-stoploss order triggered at limit price
+limit order- trade at particular price.
+4. Long Positions and short positions
+Long positions is buying the asset.
+Short positions is selling the asset.
+5. Options basics like types, strikes, greeks, pricing models, spreads, straddles,etc
+
+6. Basics of statistics.
+Sma=simple moving average.
+Ema=exponential moving average.
