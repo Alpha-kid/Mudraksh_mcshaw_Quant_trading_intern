@@ -145,3 +145,11 @@ for ipo in range(0,len(tick)):
   else:
     print('NetLoss',str(prof-loss))
   df.to_csv(tick[ipo]+' '+'Buy'+'.csv', index=False)
+  dirb="/content/"+tick[ipo]+" "+"Buy"+".csv"
+  dirs="/content/"+tick[ipo]+"Sell"+".csv"
+  df1 = pd.read_csv(dirb)
+  df2 = pd.read_csv(dirs)
+  merged_df = pd.concat([df1, df2], ignore_index=True)
+
+  # Save the merged DataFrame to a new CSV file
+  merged_df.to_csv("merged"+" "+tick[ipo]+".csv", index=False)

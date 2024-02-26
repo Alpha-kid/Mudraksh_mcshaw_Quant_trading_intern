@@ -1,0 +1,8 @@
+#Try to understand why this gitignore file is written this way
+*.txt
+*.log
+*.csv
+!StrategyLog
+!BackTestResults
+!.gitignore
+requirements.txt
