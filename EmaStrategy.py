@@ -191,15 +191,33 @@ class algoLogic:
         
 
         
-        DataFrame_day = backTestTools.getBackTestData1Min(
-            startDateTime=startTimeEpoch,endDateTime=endTimeEpoch, symbol=indexName, conn=self.conn)
-        DataFrame_day.set_index('ti',inplace=True)
+        
+        
+        DataFrame_day=backTestTools.getBackTestData1Min(
+        startDateTime=startTimeEpoch-432000,endDateTime=endTimeEpoch, symbol=indexName, conn=self.conn)
+        DF=pd.DataFrame(DataFrame_day)
+        ema10=talib.EMA(DataFrame_day['c'], timeperiod=10)
+            
+        ema20=talib.EMA(DataFrame_day['c'], timeperiod=20)
+        DF['ema10']=ema10
+        DF['ema20']=ema20
+        mask=DF['ti']==startTimeEpoch
+        ind = mask.idxmax()
+        DF=DF[ind:]
+        DF.set_index('ti',inplace=True)
+        
+        
+        
         Trade=True
+        c=0
         
         
-        for timestamp in DataFrame_day.index:
+        for timestamp in DF.index:
             self.timeData = timestamp
+            
+            
             humanTime =datetime.datetime.fromtimestamp(timestamp)
+            # print(humanTime)
             logging.info(f'------------Time {humanTime}---------------')
             # print(datetime.datetime.fromtimestamp(timestamp))
             for index, row in self.openPnl.iterrows():
@@ -246,15 +264,15 @@ class algoLogic:
                 
                 self.openPnl.reset_index(drop=True, inplace=True)
           # entrycondition->
-            foremaData=backTestTools.getBackTestData1Min(
-            startDateTime=timestamp-432000,endDateTime=timestamp, symbol=indexName, conn=self.conn)
+            # time_component2 = humanTime.time()
+            time_to_compare2 = datetime.time(15, 15)
             time_component = humanTime.time()
-            time_to_compare = datetime.time(9, 15)
-            ema10=talib.EMA(foremaData['c'], timeperiod=10)
+            time_to_compare = datetime.time(9, 20)
+            # print(DF['ema10'][timestamp-1])
             
-            ema20=talib.EMA(foremaData['c'], timeperiod=20)
             
-            if Trade==True and time_component>=time_to_compare and ema10.iloc[-1]>ema20.iloc[-1]:
+            
+            if Trade==True and time_component>=time_to_compare and DF['ema10'][timestamp]>DF['ema20'][timestamp]  and time_component<time_to_compare2:
                 Trade=False
                 indexData=backTestTools.getHistData1Min(timestamp=timestamp,
                                                         symbol=indexName,
@@ -270,7 +288,7 @@ class algoLogic:
                 putPrice = self.entryOrder(data=putData, symbol=putSym,
                                         quantity=quantity, entrySide='SELL')
                 logging.info(f'PuTsell {putPrice}')
-            if Trade==True and time_component>=time_to_compare and ema10.iloc[-1]<ema20.iloc[-1]:
+            if Trade==True and time_component>=time_to_compare and DF['ema10'][timestamp]<DF['ema20'][timestamp]  and time_component<time_to_compare2:
                 Trade=False
                 indexData=backTestTools.getHistData1Min(timestamp=timestamp,
                                                         symbol=indexName,
