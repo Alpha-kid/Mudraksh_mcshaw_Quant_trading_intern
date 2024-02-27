@@ -21,14 +21,14 @@ class algoLogic:
 
     openPnl = pd.DataFrame(
         columns=['Key', 'Symbol', 'EntryPrice', 'CurrentPrice',
-                 'Quantity',
-                 'PositionStatus', 'Pnl'])
+                'Quantity',
+                'PositionStatus', 'Pnl'])
 
     '''Save the info of close position in the below df'''
 
     closedPnl = pd.DataFrame(
         columns=['Key', 'ExitTime', 'Symbol', 'EntryPrice', 'ExitPrice',
-                 'Quantity', 'Pnl', 'ExitType'])
+                'Quantity', 'Pnl', 'ExitType'])
 
     def connectToMongo(self, userName, password):
         '''Used for connecting to the mongoDb instance'''
@@ -59,7 +59,7 @@ class algoLogic:
         return callSym
 
     def getPut(self, indexPrice, strikeDist,
-               symWithExpiry, otmFactor):
+            symWithExpiry, otmFactor):
         '''Used to get the put symbol'''
 
         '''
@@ -181,9 +181,9 @@ class algoLogic:
 
         # Coverting datetime objects to epoch
         startTimeEpoch = int(datetime.datetime(startDateTime.year, startDateTime.month,
-                             startDateTime.day, startDateTime.hour, startDateTime.minute, 0).timestamp())
+                            startDateTime.day, startDateTime.hour, startDateTime.minute, 0).timestamp())
         endTimeEpoch = int(datetime.datetime(endDateTime.year, endDateTime.month,
-                           endDateTime.day, endDateTime.hour, endDateTime.minute, 0).timestamp())
+                        endDateTime.day, endDateTime.hour, endDateTime.minute, 0).timestamp())
 
         '''--------------------------------------------------------------------------'''
         
@@ -205,15 +205,18 @@ class algoLogic:
         ind = mask.idxmax()
         DF=DF[ind:]
         DF.set_index('ti',inplace=True)
+        print(DF)
         
         
         
         Trade=True
-        c=0
         
+        prevTimeData=0
         
-        for timestamp in DF.index:
+        for timestamp in DF.index[2:]:
             self.timeData = timestamp
+            prevTimeData=timestamp-60
+            
             
             
             humanTime =datetime.datetime.fromtimestamp(timestamp)
@@ -223,8 +226,8 @@ class algoLogic:
             for index, row in self.openPnl.iterrows():
                 try:
                     data = backTestTools.getHistData1Min(timestamp=timestamp,
-                                                      symbol=row['Symbol'],
-                                                      conn=self.conn)
+                                                    symbol=row['Symbol'],
+                                                    conn=self.conn)
                     # Update current price for the symbol
                     self.openPnl.at[index, 'CurrentPrice'] = data['c']
                 except Exception as e:
@@ -263,7 +266,7 @@ class algoLogic:
 
                 
                 self.openPnl.reset_index(drop=True, inplace=True)
-          # entrycondition->
+        # entrycondition->
             # time_component2 = humanTime.time()
             time_to_compare2 = datetime.time(15, 15)
             time_component = humanTime.time()
@@ -272,14 +275,14 @@ class algoLogic:
             
             
             
-            if Trade==True and time_component>=time_to_compare and DF['ema10'][timestamp]>DF['ema20'][timestamp]  and time_component<time_to_compare2:
+            if Trade==True and time_component>=time_to_compare and DF['ema10'][prevTimeData]>DF['ema20'][prevTimeData] and DF['ema10'][prevTimeData-60]<=DF['ema20'][prevTimeData-60]  and time_component<time_to_compare2:
                 Trade=False
                 indexData=backTestTools.getHistData1Min(timestamp=timestamp,
                                                         symbol=indexName,
                                                         conn=self.conn)
 
                 putSym = self.getPut(indexPrice=indexData['c'], strikeDist=strikeDist,
-                                     symWithExpiry=symWithExpiry, otmFactor=0)
+                                    symWithExpiry=symWithExpiry, otmFactor=0)
 
                 putData = backTestTools.getHistData1Min(
                     timestamp=timestamp, symbol=putSym, conn=self.conn)
@@ -288,13 +291,13 @@ class algoLogic:
                 putPrice = self.entryOrder(data=putData, symbol=putSym,
                                         quantity=quantity, entrySide='SELL')
                 logging.info(f'PuTsell {putPrice}')
-            if Trade==True and time_component>=time_to_compare and DF['ema10'][timestamp]<DF['ema20'][timestamp]  and time_component<time_to_compare2:
+            if Trade==True and time_component>=time_to_compare and DF['ema10'][prevTimeData]<DF['ema20'][prevTimeData] and DF['ema10'][prevTimeData-60]>=DF['ema20'][prevTimeData-60]  and time_component<time_to_compare2:
                 Trade=False
                 indexData=backTestTools.getHistData1Min(timestamp=timestamp,
                                                         symbol=indexName,
                                                         conn=self.conn)
                 callSym = self.getCall(indexPrice=indexData['c'], strikeDist=strikeDist,
-                                       symWithExpiry=symWithExpiry, otmFactor=0)
+                                    symWithExpiry=symWithExpiry, otmFactor=0)
 
                 # Fetch option price 1 min candle data from the database
 
@@ -308,9 +311,9 @@ class algoLogic:
 
 
             # Close All Position in OpenPnl at the end of day    
-            
+        prevTimeData=timestamp-60    
         self.pnlCalculator()
-   
+
 
 
 
@@ -344,7 +347,7 @@ if __name__ == "__main__":
     userName = 'InternDB'  # Enter provided username
     password = 'mudrakshInternDB'  # Enter provided password
 
-    startDate = datetime.date(2021, 9, 29)
+    startDate = datetime.date(2021, 7, 29)
     endDate = datetime.date(2021, 9, 30)
 
 
@@ -389,4 +392,4 @@ if __name__ == "__main__":
 
         # Update the date to run the next day
         startDate += datetime.timedelta(days=1)
-   
+
