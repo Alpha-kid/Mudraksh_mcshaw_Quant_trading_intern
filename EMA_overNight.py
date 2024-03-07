@@ -213,21 +213,18 @@ class algoLogic:
         
         Trade=True
         
-        prevTimes=[0]
+        prevTimes=[]
         tim=DF.index[2]
         prevTimes.append(tim-60)
         
         for timestamp in DF.index[2:]:
             self.timeData = timestamp
-            prevTimeData=prevTimes[len(prevTimes)-1]
             
-            
-
-            
-            
+            prevTimeData=prevTimes[0]
+            print(prevTimeData)
             
             humanTime =datetime.datetime.fromtimestamp(timestamp)
-            print(humanTime)
+            # print(humanTime)
             logging.info(f'------------Time {humanTime}---------------')
             # print(datetime.datetime.fromtimestamp(timestamp))
             for index, row in self.openPnl.iterrows():
@@ -261,6 +258,23 @@ class algoLogic:
                             [0]+["TargetHit"]
                         Trade=True
                         self.openPnl.drop(index, inplace=True)
+                    elif row['PositionStatus']==-1 and DF['ema10'][prevTimeData]>DF['ema20'][prevTimeData] and row['Symbol'][-2]+row['Symbol'][-1]=='CE':
+                        self.closedPnl.loc[len(self.closedPnl)] = [row['Key']] + [datetime.datetime.fromtimestamp(timestamp)] + [row['Symbol']] +\
+                            [row['EntryPrice']] +\
+                            [row['CurrentPrice']] +\
+                            [row['PositionStatus']*row['Quantity']] +\
+                            [0]+["Crossover Cut"]
+                        Trade=True
+                        self.openPnl.drop(index, inplace=True)
+                    elif row['PositionStatus']==-1 and DF['ema10'][prevTimeData]<DF['ema20'][prevTimeData] and row['Symbol'][-2]+row['Symbol'][-1]=='PE':
+                        self.closedPnl.loc[len(self.closedPnl)] = [row['Key']] + [datetime.datetime.fromtimestamp(timestamp)] + [row['Symbol']] +\
+                            [row['EntryPrice']] +\
+                            [row['CurrentPrice']] +\
+                            [row['PositionStatus']*row['Quantity']] +\
+                            [0]+["Crossover Cut"]
+                        Trade=True
+                        self.openPnl.drop(index, inplace=True)
+                    
                     
                     elif time_component>=time_to_compare and (backTestTools.getCurrentExpiry(timestamp))==datetime.datetime.fromtimestamp(timestamp).date().strftime('%d%b%y').upper():
                         self.closedPnl.loc[len(self.closedPnl)] = [row['Key']] + [datetime.datetime.fromtimestamp(timestamp)] + [row['Symbol']] +\
@@ -281,8 +295,9 @@ class algoLogic:
             # print(DF['ema10'][timestamp-1])
             symWithExpiry=baseSym+backTestTools.getCurrentExpiry(timestamp)
 
-            if (backTestTools.getCurrentExpiry(timestamp))==backTestTools.getCurrentExpiry(timestamp+86400) and Trade==True and time_component>=time_to_compare and DF['ema10'][prevTimeData]>DF['ema20'][prevTimeData] and DF['ema10'][prevTimeData-60]<=DF['ema20'][prevTimeData-60]  and time_component<time_to_compare2:
+            if (backTestTools.getCurrentExpiry(timestamp))!=backTestTools.getCurrentExpiry(timestamp+86400) and Trade==True and time_component>=time_to_compare and DF['ema10'][prevTimeData]>DF['ema20'][prevTimeData] and DF['ema10'][prevTimeData-60]<=DF['ema20'][prevTimeData-60]  and time_component<time_to_compare2:
                 Trade=False
+                print(1)
                 try:
                     indexData=backTestTools.getHistData1Min(timestamp=timestamp,
                                                             symbol=indexName,
@@ -303,7 +318,8 @@ class algoLogic:
                 except Exception as e:
                     logging.info(e)
                     continue
-            elif (backTestTools.getCurrentExpiry(timestamp))==backTestTools.getCurrentExpiry(timestamp+86400) and Trade==True and time_component>=time_to_compare and DF['ema10'][prevTimeData]<DF['ema20'][prevTimeData] and DF['ema10'][prevTimeData-60]>=DF['ema20'][prevTimeData-60]  and time_component<time_to_compare2:
+            elif (backTestTools.getCurrentExpiry(timestamp))!=backTestTools.getCurrentExpiry(timestamp+86400) and Trade==True and time_component>=time_to_compare and DF['ema10'][prevTimeData]<DF['ema20'][prevTimeData] and DF['ema10'][prevTimeData-60]>=DF['ema20'][prevTimeData-60]  and time_component<time_to_compare2:
+                print(1)
                 try:
                     Trade=False
                     indexData=backTestTools.getHistData1Min(timestamp=timestamp,
@@ -331,6 +347,7 @@ class algoLogic:
             
             
             elif Trade==True and time_component>=time_to_compare and DF['ema10'][prevTimeData]>DF['ema20'][prevTimeData] and DF['ema10'][prevTimeData-60]<=DF['ema20'][prevTimeData-60]  and time_component<time_to_compare2:
+                
                 try:
                     Trade=False
                     indexData=backTestTools.getHistData1Min(timestamp=timestamp,
@@ -352,6 +369,7 @@ class algoLogic:
                     logging.info(e)
                     continue
             elif Trade==True and time_component>=time_to_compare and DF['ema10'][prevTimeData]<DF['ema20'][prevTimeData] and DF['ema10'][prevTimeData-60]>=DF['ema20'][prevTimeData-60]  and time_component<time_to_compare2:
+                
                 try:
                     Trade=False
                     indexData=backTestTools.getHistData1Min(timestamp=timestamp,
@@ -372,11 +390,13 @@ class algoLogic:
                     logging.info(f'Callsell {callPrice}')
                 except Exception as e:
                     logging.info(e)
+                    continue
 
 
             # Close All Position in OpenPnl at the end of day    
-        prevTimes.append(timestamp-60) 
-        prevTimes.pop(0)    
+            prevTimes.append(timestamp) 
+        
+            prevTimes.pop(0)    
         self.pnlCalculator()
 
 

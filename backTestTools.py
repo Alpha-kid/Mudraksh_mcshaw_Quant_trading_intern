@@ -50,6 +50,53 @@ def getBackTestData1Min(startDateTime, endDateTime, symbol, conn=None):
     else:
         raise Exception(
             f"Data not found for {symbol} in range {datetime.datetime.fromtimestamp(startDateTime)} to {datetime.datetime.fromtimestamp(endDateTime)}")
+def getHistData5Min(timestamp, symbol, conn=None):
+    '''Used to fetch data for a single symbol at a 
+        particular time, returns data as a dictionary'''
+
+    if not conn:
+        conn = MongoClient()
+        '''Provide the connection object else the code 
+            will try to connect to MongoDB running on localhost'''
+
+    db = conn['OHLC_MINUTE_5_New']
+    collection = db.Data
+    rec = collection.find_one(
+        {'$and': [{'sym': symbol},
+                  {"ti": timestamp}]})
+
+    if rec:
+        return rec
+    else:
+        raise Exception(
+            f"Data not found for {symbol} at {datetime.datetime.fromtimestamp(timestamp)}")
+def getBackTestData5Min(startDateTime, endDateTime, symbol, conn=None):
+    '''Used to fetch data for a single symbol 
+        for a given date range, returns data as 
+        a pandas dataframe'''
+
+    if not conn:
+        conn = MongoClient()
+        '''Provide the connection object else the code 
+            will try to connect to MongoDB running on localhost'''
+
+    db = conn['OHLC_MINUTE_5_FUT']
+    collection = db.Data
+
+    rec = collection.find(
+        {'$and':
+         [
+             {'sym': symbol},
+             {"ti": {'$gte': startDateTime, '$lte': endDateTime}}
+         ]
+         })
+
+    if rec:
+        df = pd.DataFrame(list(rec))
+        return df
+    else:
+        raise Exception(
+            f"Data not found for {symbol} in range {datetime.datetime.fromtimestamp(startDateTime)} to {datetime.datetime.fromtimestamp(endDateTime)}")
 
 
 # startDate = datetime.date(2021, 9, 2)
