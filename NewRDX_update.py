@@ -4,7 +4,6 @@ import pandas as pd
 import backTestTools  # used to fetch historic data and historic option expiries
 import datetime
 import talib
-import math
 
 # from dataLogger import logData  # Used for logging strategy outputs
 #error remove
@@ -17,20 +16,20 @@ class algoLogic:
     timeData = None
 
     # Save the results of the backtest in this folder
-    writeFileLocation = r'./BackTestResultsRDX/'
+    writeFileLocation = r'./BackTestResultsUPDATE_RDX/'
 
     '''Save the info of the open position in the below df'''
 
     openPnl = pd.DataFrame(
         columns=['Key', 'Symbol', 'EntryPrice', 'CurrentPrice',
                 'Quantity',
-                'PositionStatus', 'Pnl','Slfixed'])
+                'PositionStatus', 'Pnl','Slfixed','trailing_active'])
 
     '''Save the info of close position in the below df'''
 
     closedPnl = pd.DataFrame(
-        columns=['Key', 'ExitTime', 'Symbol', 'EntryPrice', 'ExitPrice',
-                'Quantity', 'Pnl', 'ExitType'])
+    columns=['Key', 'ExitTime', 'Symbol', 'EntryPrice', 'ExitPrice', 'PositionStatus',
+             'Quantity', 'Pnl', 'ExitType'])
 
     def connectToMongo(self, userName, password):
         '''Used for connecting to the mongoDb instance'''
@@ -79,7 +78,7 @@ class algoLogic:
         putSym = symWithExpiry+str(int(atm)-otmFactor) + 'PE'
         return putSym
 
-    def entryOrder(self, data, symbol, quantity, entrySide,sl):
+    def entryOrder(self, data, symbol, quantity, entrySide,sl,trailing):
         '''Used to update the new position in the openPnl Df'''
 
         entryPrice = data['c']
@@ -90,7 +89,7 @@ class algoLogic:
 
         '''Adding position to the openPnl df using levelAdder method'''
 
-        self.levelAdder(entryPrice, symbol, quantity, positionSide,sl)
+        self.levelAdder(entryPrice, symbol, quantity, positionSide,sl,trailing)
 
         return entryPrice
 
@@ -115,11 +114,11 @@ class algoLogic:
             except:
                 pass
 
-    def levelAdder(self, entryPrice, symbol, quantity, positionSide,sl):
+    def levelAdder(self, entryPrice, symbol, quantity, positionSide,sl,trailing):
         '''Appending the new positon to the openPnl df and saving it to the relevant file'''
 
         self.openPnl.loc[len(self.openPnl)] = [datetime.datetime.fromtimestamp(self.timeData)]+[symbol] + [entryPrice] \
-            + [entryPrice] + [quantity]+[positionSide] + [0]+[sl]
+            + [entryPrice] + [quantity]+[positionSide] + [0]+[sl]+[trailing]
 
         try:
             self.openPnl.to_csv(self.writeFileLocation + 'openPosition.csv')
@@ -193,25 +192,45 @@ class algoLogic:
         startDateTime=startTimeEpoch-432000,endDateTime=endTimeEpoch, symbol=indexName, conn=self.conn)
         DataFrame5m=backTestTools.getBackTestData5Min(
         startDateTime=startTimeEpoch-432000,endDateTime=endTimeEpoch, symbol=indexName, conn=self.conn)
+        DataFrame1d=backTestTools.getBackTestData1Day(
+        startDateTime=startTimeEpoch-216000000,endDateTime=endTimeEpoch, symbol=indexName, conn=self.conn)
         DF=pd.DataFrame(DataFrame1m)
         DF5=pd.DataFrame(DataFrame5m)
+        DFD=pd.DataFrame(DataFrame1d)
         RSI=talib.RSI(DF5['c'], timeperiod=14)
+        EMAH=talib.EMA(DFD['h'],timeperiod=5)
+        EMAL=talib.EMA(DFD['l'],timeperiod=5)
         DF5['RSI']=RSI
+        DFD['EMAH']=EMAH
+        DFD['EMAL']=EMAL
         mask=DF['ti']==startTimeEpoch
+        
         ind = mask.idxmax()
         DF=DF[ind:]
         DF.set_index('ti',inplace=True)
         mask=DF5['ti']==startTimeEpoch
         ind=mask.idxmax()
+        
         DF5=DF5[ind:]
         DF5.set_index('ti',inplace=True)
+        mask=DFD['ti']>=startTimeEpoch
+        ind=mask.idxmax()
+        DFD=DFD[ind:]
+        DFD.set_index('ti',inplace=True)
+        print(datetime.datetime.fromtimestamp(DF5.index[0]))
+        print(datetime.datetime.fromtimestamp(DF.index[0]))
+        print(datetime.datetime.fromtimestamp(DFD.index[0]))
+        print("Hello")
+        
         import math
         putc=0
         callc=0
         Trade=True
         prevt=[]
+        puttrigger=[0]
+        calltrigger=[10**100]
 
-        for timestamp in DF.index[3:]:
+        for timestamp in DF.index[1000:]:
             self.timeData = timestamp
 
             humanTime =datetime.datetime.fromtimestamp(timestamp)
@@ -242,14 +261,17 @@ class algoLogic:
                 low=data['l']
                 close=data['c']
                 logging.info(f'o=>-{ope}--h=>-{high}-l=>-{low}-c=>-{close}---')
+                
                 if(timestamp in DF5.index):
                     logging.info(DF5['RSI'][timestamp])
                     
                     if(len(prevt)>=3):
                         timesprev=prevt[len(prevt)-2]
                         timesprev2=prevt[len(prevt)-3]
-                        logging.info(f'Rsi__TRUE---{timestamp}')
+                        logging.info(f'Rsi__TRUE---{datetime.datetime.fromtimestamp(timestamp)}')
                         symWithExpiry=baseSym+backTestTools.getCurrentExpiry(timestamp)
+                        
+                        
                         if(DF5['RSI'][timestamp]<50 and DF5['RSI'][timesprev]>=50) or (DF5['RSI'][timestamp]>50 and DF5['RSI'][timesprev]<=50):
                             Trade=True
                             # logging.info(f'Rsi__TRUE---{timestamp}')
@@ -262,53 +284,138 @@ class algoLogic:
                                     self.closedPnl.loc[len(self.closedPnl)] = [row['Key']] + [datetime.datetime.fromtimestamp(timestamp)] + [row['Symbol']] +\
                                         [row['EntryPrice']] +\
                                         [row['CurrentPrice']] +\
+                                        [row['PositionStatus']]+\
                                         [row['PositionStatus']*row['Quantity']] +\
                                         [0]+["HighHit"] 
                                     if(sym=='PE'):
                                         putc-=1
+                                        puttrigger.pop(len(puttrigger)-1)
                                     else:
                                         callc-=1
+                                        calltrigger.pop(len(calltrigger)-1)
                                     self.openPnl.drop(index, inplace=True)
                                 elif(sym=='PE' and DF5['l'][timestamp]<=row['Slfixed']):
                                     self.closedPnl.loc[len(self.closedPnl)] = [row['Key']] + [datetime.datetime.fromtimestamp(timestamp)] + [row['Symbol']] +\
                                         [row['EntryPrice']] +\
                                         [row['CurrentPrice']] +\
+                                        [row['PositionStatus']]+\
                                         [row['PositionStatus']*row['Quantity']] +\
                                         [0]+["LowHit"]
                                     if(sym=='PE'):
                                         putc-=1
+                                        puttrigger.pop(len(puttrigger)-1)
                                     else:
                                         callc-=1
+                                        calltrigger.pop(len(calltrigger)-1)
                                     self.openPnl.drop(index, inplace=True)
+                                elif (row['trailing_active']==True and sym=='PE' and DF5['RSI'][timestamp]<=40):
+                                    self.closedPnl.loc[len(self.closedPnl)] = [row['Key']] + [datetime.datetime.fromtimestamp(timestamp)] + [row['Symbol']] +\
+                                        [row['EntryPrice']] +\
+                                        [row['CurrentPrice']] +\
+                                        [row['PositionStatus']]+\
+                                        [row['PositionStatus']*row['Quantity']] +\
+                                        [0]+["Trailing_Sl Hit"]
+                                    if(sym=='PE'):
+                                        putc-=1
+                                        puttrigger.pop(len(puttrigger)-1)
+                                    else:
+                                        callc-=1
+                                        calltrigger.pop(len(calltrigger)-1)
+                                    self.openPnl.drop(index, inplace=True)
+                                elif (row['trailing_active']==True and sym=='CE' and DF5['RSI'][timestamp]>=60):
+                                    self.closedPnl.loc[len(self.closedPnl)] = [row['Key']] + [datetime.datetime.fromtimestamp(timestamp)] + [row['Symbol']] +\
+                                        [row['EntryPrice']] +\
+                                        [row['CurrentPrice']] +\
+                                        [row['PositionStatus']]+\
+                                        [row['PositionStatus']*row['Quantity']] +\
+                                        [0]+["Trailing_Sl Hit"]
+                                    if(sym=='PE'):
+                                        putc-=1
+                                        puttrigger.pop(len(puttrigger)-1)
+                                    else:
+                                        callc-=1
+                                        calltrigger.pop(len(calltrigger)-1)
+                                    self.openPnl.drop(index, inplace=True)
+                                
+
                             self.openPnl.reset_index(drop=True, inplace=True)
                         # entryconditions->
-                        if (putc<3 and callc<3 and backTestTools.getCurrentExpiry(timestamp))!=backTestTools.getCurrentExpiry(timestamp+86400) and DF5['RSI'][timesprev2]<=60  and Trade==True  and DF5['RSI'][timesprev]>60:
+                        
+                       
+                        mask = DFD.index < timestamp
+                        
+
+                        # Use the mask to filter the DataFrame index, then get the max value
+                        # This finds the last date where the condition is true (i.e., the date is just before the timestamp)
+                        
+                        position=0
+                        if mask.any():  # Check if there's any date less than the timestamp
+                            prevd = DFD.index[mask].max()
+                            position = DFD.index.get_loc(prevd)
+                        else:
+                            prevd = None
+                        
+                        if position > 0:
+                            # Adjust to get one more day less
+                            prevd = DFD.index[position - 1]
+                        else:
+                            prevd = None
+                            continue
+                        first=putc<3
+                        second=DFD['c'][prevd]> DFD['EMAH'][prevd]
+                        third=puttrigger[len(puttrigger)-1]<=DF['c'][timestamp]
+                        fourth=(backTestTools.getCurrentExpiry(timestamp))!=backTestTools.getCurrentExpiry(timestamp+86400) 
+                        fifth=(DF5['RSI'][timesprev2]<=60) 
+                        sixth=(DF5['RSI'][timesprev]>60)
+
+                        logging.info(f'fg===={first}, {second}, {third}, {fourth}, {fifth} , {sixth}')
+                        logging.info(f'Daily+++++++++++{datetime.datetime.fromtimestamp(prevd)}')
+                        op=DFD['c'][prevd]
+                        opi=DFD['EMAH'][prevd]
+                        logging.info(f'====={op},EMA=={opi}')
+                        print(putc < 3, callc < 3, DFD['c'][prevd] > DFD['EMAH'][prevd],(backTestTools.getCurrentExpiry(timestamp) != backTestTools.getCurrentExpiry(timestamp + 86400)), puttrigger[-1] <= DF['c'][timestamp], Trade, DF5['RSI'][timesprev] > 60, DF5['RSI'][timesprev2] <= 60)
+                        if ((putc < 3) and (DFD['c'].loc[prevd] > DFD['EMAH'].loc[prevd]) and (puttrigger[-1] <= DF['c'].loc[timestamp]) and (backTestTools.getCurrentExpiry(timestamp) != backTestTools.getCurrentExpiry(timestamp + 86400)) and  (DF5['RSI'][timesprev]>60) and (DF5['RSI'][timesprev2]<=60) and (Trade == True) ):
                             Trade=False
                             print(1)
                             
-                        
-                            indexData=backTestTools.getHistData1Min(timestamp=timestamp,
-                                                                    symbol=indexName,
-                                                                    conn=self.conn)
-                            symWithExpiry=baseSym+backTestTools.getCurrentExpiry(timestamp+86400)
-
-                            putSym = self.getPut(indexPrice=indexData['c'], strikeDist=strikeDist,
-                                                symWithExpiry=symWithExpiry, otmFactor=0)
-
-                            putData = backTestTools.getHistData1Min(
-                                timestamp=timestamp, symbol=putSym, conn=self.conn)
-                            
-                            logging.info(f'Data for {putSym} is {putData}')
-                            sl=min(DF5['l'][timesprev],DF5['l'][timesprev2])
-
-                            putPrice = self.entryOrder(data=putData, symbol=putSym,
-                                                    quantity=quantity, entrySide='SELL',sl=sl)
-                            logging.info(f'PuTsell {putPrice}')
-                            putc+=1
-                            
-                        elif (callc<3 and putc<3 and backTestTools.getCurrentExpiry(timestamp))!=backTestTools.getCurrentExpiry(timestamp+86400) and Trade==True  and DF5['RSI'][timesprev]<40 and DF5['RSI'][timesprev2]>=40 :
-                            print(1)
                             try:
+                                logging.info(f'Daily+++++++++++{datetime.datetime.fromtimestamp(prevd)}')
+                                op=DFD['c'][prevd]
+                                opi=DFD['EMAH'][prevd]
+                                logging.info(f'====={op},EMA=={opi}')
+                            
+                        
+                                indexData=backTestTools.getHistData1Min(timestamp=timestamp,
+                                                                        symbol=indexName,
+                                                                        conn=self.conn)
+                                
+                                symWithExpiry=baseSym+backTestTools.getCurrentExpiry(timestamp+86400)
+
+                                putSym = self.getPut(indexPrice=indexData['c'], strikeDist=strikeDist,
+                                                    symWithExpiry=symWithExpiry, otmFactor=0)
+
+                                putData = backTestTools.getHistData1Min(
+                                    timestamp=timestamp, symbol=putSym, conn=self.conn)
+                                
+                                
+                                logging.info(f'Data for {putSym} is {putData}')
+                                sl=min(DF5['l'][timesprev],DF5['l'][timesprev2])
+
+                                putPrice = self.entryOrder(data=putData, symbol=putSym,
+                                                        quantity=quantity, entrySide='SELL',sl=sl,trailing=False)
+                                puttrigger.append(indexData['c']-(putPrice*0.1))
+                                logging.info(f'PuTsell {putPrice}')
+                                putc+=1
+                            except Exception as e:
+                                logging.info(e)
+                                continue
+                            
+                        elif ( (callc<3) and (backTestTools.getCurrentExpiry(timestamp)!=backTestTools.getCurrentExpiry(timestamp+86400)) and (Trade==True) and (DFD['c'][prevd]<DFD['EMAL'][prevd]) and (calltrigger[len(calltrigger)-1]>=DF['c'][timestamp])  and (DF5['RSI'][timesprev]<40) and (DF5['RSI'][timesprev2]>=40)) :
+                            try:
+                                logging.info(f'Daily+++++++++++{datetime.datetime.fromtimestamp(prevd)}')
+                                op=DFD['c'][prevd]
+                                opi=DFD['EMAH'][prevd]
+                                logging.info(f'====={op},EMA=={opi}')
                                 Trade=False
                                 indexData=backTestTools.getHistData1Min(timestamp=timestamp,
                                                                         symbol=indexName,
@@ -323,42 +430,60 @@ class algoLogic:
                                 callData = backTestTools.getHistData1Min(
                                     timestamp=timestamp, symbol=callSym, conn=self.conn)
                                 
+                                
                                 logging.info(f'Data for {callSym} is {callData}')
                                 sl=max(DF5['h'][timesprev],DF5['h'][timesprev2])
 
                                 callPrice = self.entryOrder(data=callData, symbol=callSym,
-                                                        quantity=quantity, entrySide='SELL',sl=sl)
+                                                        quantity=quantity, entrySide='SELL',sl=sl,trailing=False)
+                                calltrigger.append(indexData['c']+(callPrice*0.1))
                                 logging.info(f'Callsell {callPrice}')
                                 callc+=1
                             except Exception as e:
                                 logging.info(e)
                                 continue
-                        elif putc<3 and callc<3 and Trade==True  and DF5['RSI'][timesprev]>60 and DF5['RSI'][timesprev2]<=60 :
-                            
-                            
-                            Trade=False
-                            indexData=backTestTools.getHistData1Min(timestamp=timestamp,
-                                                                    symbol=indexName,
-                                                                    conn=self.conn)
-
-                            putSym = self.getPut(indexPrice=indexData['c'], strikeDist=strikeDist,
-                                                symWithExpiry=symWithExpiry, otmFactor=0)
-
-                            putData = backTestTools.getHistData1Min(
-                                timestamp=timestamp, symbol=putSym, conn=self.conn)
-                            
-                            logging.info(f'Data for {putSym} is {putData}')
-                            
-                            sl=min(DF5['l'][timesprev],DF5['l'][timesprev2])
-
-                            putPrice = self.entryOrder(data=putData, symbol=putSym,
-                                                    quantity=quantity, entrySide='SELL',sl=sl)
-                            logging.info(f'PuTsell {putPrice}')
-                            putc+=1
                         
-                        elif callc<3 and putc<3 and Trade==True  and DF5['RSI'][timesprev]<40 and DF5['RSI'][timesprev2]>=40 :
+                        elif ((putc<3) and (DFD['c'][prevd]>DFD['EMAH'][prevd]) and (puttrigger[len(puttrigger)-1]<=DF['c'][timestamp]) and (Trade==True)  and (DF5['RSI'][timesprev]>60) and (DF5['RSI'][timesprev2]<=60) ):
                             
                             try:
+                                logging.info(f'Daily+++++++++++{datetime.datetime.fromtimestamp(prevd)}')
+                                op=DFD['c'][prevd]
+                                opi=DFD['EMAH'][prevd]
+                                logging.info(f'====={op},EMA=={opi}')
+                                Trade=False
+                                indexData=backTestTools.getHistData1Min(timestamp=timestamp,
+                                                                        symbol=indexName,
+                                                                        conn=self.conn)
+
+                                putSym = self.getPut(indexPrice=indexData['c'], strikeDist=strikeDist,
+                                                    symWithExpiry=symWithExpiry, otmFactor=0)
+
+                                putData = backTestTools.getHistData1Min(
+                                    timestamp=timestamp, symbol=putSym, conn=self.conn)
+                                
+                                
+                                logging.info(f'Data for {putSym} is {putData}')
+                                
+                                sl=min(DF5['l'][timesprev],DF5['l'][timesprev2])
+
+                                putPrice = self.entryOrder(data=putData, symbol=putSym,
+                                                        quantity=quantity, entrySide='SELL',sl=sl,trailing=False)
+                                puttrigger.append(indexData['c']-(putPrice*0.1))
+                                logging.info(f'PuTsell {putPrice}')
+                                putc+=1
+                            except Exception as e:
+                                logging.info(e)
+                                continue
+                        
+                        elif ((callc<3)  and (Trade==True) and (DFD['c'][prevd]<DFD['EMAL'][prevd]) and (calltrigger[len(calltrigger)-1]>=DF['c'][timestamp])  and (DF5['RSI'][timesprev]<40) and (DF5['RSI'][timesprev2]>=40))  :
+                            
+                            try:
+                                logging.info(f'Daily+++++++++++{datetime.datetime.fromtimestamp(prevd)}')
+                                op=DFD['c'][prevd]
+                                opi=DFD['EMAH'][prevd]
+                                logging.info(f'====={op},EMA=={opi}')
+
+
                                 Trade=False
                                 indexData=backTestTools.getHistData1Min(timestamp=timestamp,
                                                                         symbol=indexName,
@@ -371,11 +496,14 @@ class algoLogic:
                                 callData = backTestTools.getHistData1Min(
                                     timestamp=timestamp, symbol=callSym, conn=self.conn)
                                 
+                                
+                                
                                 logging.info(f'Data for {callSym} is {callData}')
                                 sl=max(DF5['h'][timesprev],DF5['h'][timesprev2])
 
                                 callPrice = self.entryOrder(data=callData, symbol=callSym,
-                                                        quantity=quantity, entrySide='SELL',sl=sl)
+                                                        quantity=quantity, entrySide='SELL',sl=sl,trailing=False)
+                                calltrigger.append(indexData['c']+(callPrice*0.1))
                                 logging.info(f'Callsell {callPrice}')
                                 callc+=1
                             except Exception as e:
@@ -396,36 +524,47 @@ class algoLogic:
                             self.closedPnl.loc[len(self.closedPnl)] = [row['Key']] + [datetime.datetime.fromtimestamp(Timenow)] + [row['Symbol']] +\
                                 [row['EntryPrice']] +\
                                 [row['CurrentPrice']] +\
+                                [row['PositionStatus']]+\
                                 [row['PositionStatus']*row['Quantity']] +\
                                 [0]+["Losshit"]
                             if(sym=='PE'):
                                 putc-=1
+                                puttrigger.pop(len(puttrigger)-1)
                             else:
                                 callc-=1
+                                calltrigger.pop(len(calltrigger)-1)
                             self.openPnl.drop(index, inplace=True)
                         elif row['PositionStatus']==-1 and row['CurrentPrice']<=row['EntryPrice']*(1-rewardPercent):
                             self.closedPnl.loc[len(self.closedPnl)] = [row['Key']] + [datetime.datetime.fromtimestamp(Timenow)] + [row['Symbol']] +\
                                 [row['EntryPrice']] +\
                                 [row['CurrentPrice']] +\
+                                [row['PositionStatus']]+\
                                 [row['PositionStatus']*row['Quantity']] +\
                                 [0]+["TargetHit"]
                             if(sym=='PE'):
                                 putc-=1
+                                puttrigger.pop(len(puttrigger)-1)
                             else:
                                 callc-=1
+                                calltrigger.pop(len(calltrigger)-1)
                             self.openPnl.drop(index, inplace=True)
+                        elif row['PositionStatus']==-1 and row['CurrentPrice']<=row['EntryPrice']*(1-0.3):
+                            row['trailing_active']=True
                         
                         
                         elif time_component>=time_to_compare1 and (row['Symbol'][6:13])==datetime.datetime.fromtimestamp(timestamp).date().strftime('%d%b%y').upper():
                             self.closedPnl.loc[len(self.closedPnl)] = [row['Key']] + [datetime.datetime.fromtimestamp(timestamp)] + [row['Symbol']] +\
                                 [row['EntryPrice']] +\
                                 [row['CurrentPrice']] +\
+                                [row['PositionStatus']]+\
                                 [row['PositionStatus']*row['Quantity']] +\
                                 [0]+["TimeUP"]
                             if(sym=='PE'):
                                 putc-=1
+                                puttrigger.pop(len(puttrigger)-1)
                             else:
                                 callc-=1
+                                calltrigger.pop(len(calltrigger)-1)
                             self.openPnl.drop(index, inplace=True)
 
                     
@@ -483,8 +622,8 @@ if __name__ == "__main__":
     userName = 'InternDB'  # Enter provided username
     password = 'mudrakshInternDB'  # Enter provided password
 
-    startDate = datetime.date(2021, 7, 29)
-    endDate = datetime.date(2021, 8, 9)
+    startDate = datetime.date(2021, 8, 29)
+    endDate = datetime.date(2021, 12, 9)
 
 
     while endDate >= startDate:

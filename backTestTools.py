@@ -50,6 +50,29 @@ def getBackTestData1Min(startDateTime, endDateTime, symbol, conn=None):
     else:
         raise Exception(
             f"Data not found for {symbol} in range {datetime.datetime.fromtimestamp(startDateTime)} to {datetime.datetime.fromtimestamp(endDateTime)}")
+def getBackTestData1Day(startDateTime, endDateTime, symbol, conn=None):
+    conn=connectToMongo()
+    
+
+    db = conn['OHLC_DAY_1']
+    collection = db.Data
+
+    rec = collection.find(
+        {'$and':
+         [
+             {'sym': symbol},
+             {"ti": {'$gte': startDateTime, '$lte': endDateTime}}
+         ]
+         })
+
+    if rec:
+        df = pd.DataFrame(list(rec))
+        return df
+    else:
+        raise Exception(
+            f"Data not found for {symbol} in range {datetime.datetime.fromtimestamp(startDateTime)} to {datetime.datetime.fromtimestamp(endDateTime)}")
+
+
 def getHistData5Min(timestamp, symbol, conn=None):
     '''Used to fetch data for a single symbol at a 
         particular time, returns data as a dictionary'''
